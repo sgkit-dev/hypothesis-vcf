@@ -31,6 +31,7 @@ class Field:
     vcf_key: str
     vcf_type: str
     vcf_number: str
+    description: str = "Generated field"
 
     def get_header(self):
         return (
@@ -38,9 +39,19 @@ class Field:
             f"ID={self.vcf_key},"
             f"Type={self.vcf_type},"
             f"Number={self.vcf_number},"
-            f'Description="{self.category},Type={self.vcf_type},Number={self.vcf_number}">'
+            f'Description="{self.description}">'
         )
 
+
+# GT is a special case, since it has a special syntax, and must be listed as the first
+# format field (if present)
+GT = Field(
+    category="FORMAT",
+    vcf_key="GT",
+    vcf_type="String",
+    vcf_number="1",
+    description="Genotype",
+)
 
 # references to the VCF spec are for https://samtools.github.io/hts-specs/VCFv4.3.pdf
 
@@ -134,7 +145,7 @@ def vcf_numbers(category, max_number):
 def vcf_fields(category, max_number):
     # info flag fields must have number 0
     # non-flag fields can't have number 0
-    return builds(
+    general_fields = builds(
         Field,
         category=just(category),
         vcf_key=vcf_field_keys(category),
@@ -144,6 +155,11 @@ def vcf_fields(category, max_number):
         lambda field: (field.vcf_type == "Flag" and field.vcf_number == "0")
         or (field.vcf_type != "Flag" and field.vcf_number != "0")
     )
+    if category == "INFO":
+        return general_fields
+    else:
+        # FORMAT: GT special case
+        return one_of(just(GT), general_fields)
 
 
 # [1.6.1 Fixed fields]
@@ -184,8 +200,31 @@ def qualities():
     )
 
 
+# [1.6.2 Genotype fields]
+
+
+def genotypes(alleles, ploidy):
+    def gt_str(allele_indexes, phased):
+        sep = "|" if phased else "/"
+        return sep.join(
+            [str(idx) if idx is not None else "." for idx in allele_indexes]
+        )
+
+    return builds(
+        gt_str,
+        lists(
+            one_of(integers(0, alleles - 1), none()), min_size=ploidy, max_size=ploidy
+        ),
+        booleans(),
+    )
+
+
 @composite
 def vcf_values(draw, field, *, max_number, alt_alleles, ploidy):
+    # GT special case
+    if field is GT:
+        return [draw(genotypes(alleles=alt_alleles + 1, ploidy=ploidy))]
+
     # [1.3 Data types]
     if field.vcf_type == "Integer":
         # some integer values at lower end of range are not allowed
@@ -230,6 +269,15 @@ def vcf_number_to_ints(vcf_number, *, max_number, alt_alleles, ploidy):
         n_alleles = alt_alleles + 1
         return just(comb(n_alleles + ploidy - 1, ploidy))
     raise ValueError(f"Number '{vcf_number}' is not supported.")
+
+
+def ensure_gt_first(format_fields):
+    # GT must be the first field if present [1.6.2 Genotype fields]
+    try:
+        i = format_fields.index(GT)
+        format_fields.insert(0, format_fields.pop(i))
+    except ValueError:
+        pass
 
 
 @composite
@@ -289,6 +337,7 @@ def vcf(
             unique_by=lambda f: f.vcf_key,
         )
     )
+    ensure_gt_first(format_fields)
     sample_ids = draw(
         lists(
             text(alphabet=ALPHANUMERIC, min_size=1), max_size=max_samples, unique=True
