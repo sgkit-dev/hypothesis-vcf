@@ -1,3 +1,5 @@
+import re
+
 import pysam
 from hypothesis import HealthCheck, given, note, settings
 from hypothesis.strategies import data
@@ -7,6 +9,7 @@ from hypothesis_vcf.strategies import (
     RESERVED_FORMAT_KEYS,
     RESERVED_INFO_KEYS,
     Field,
+    genotypes,
     vcf_field_keys,
     vcf_fields,
     vcf_values,
@@ -38,6 +41,17 @@ def test_format_fields(data):
     assert field.category == "FORMAT"
     assert field.vcf_type != "Flag"
     assert field.vcf_number != "0"
+
+
+@given(data=data())
+def test_genotypes(data):
+    alleles = 3
+    ploidy = 2
+    gt = data.draw(genotypes(alleles=alleles, ploidy=ploidy))
+    allele_index_strs = re.split("[/|]", gt)
+    assert len(allele_index_strs) == ploidy
+    allele_indexes = [int(idx) if idx != "." else None for idx in allele_index_strs]
+    assert all(0 <= idx < alleles for idx in allele_indexes if idx is not None)
 
 
 @given(data=data())
