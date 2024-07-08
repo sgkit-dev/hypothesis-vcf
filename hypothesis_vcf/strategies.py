@@ -67,8 +67,6 @@ RESERVED_INFO_KEYS = [
     "SOMATIC",
     "VALIDATED",
     "1000G",
-    # conflicts with 'variant_id' variable; see RESERVED_VARIABLE_NAMES in sgkit
-    "id",
 ]
 
 # [Table 2: Reserved genotype keys]
@@ -101,9 +99,10 @@ def vcf_field_keys(category):
     field_key_regex = r"[A-Za-z_][0-9A-Za-z_.]"
 
     def is_reserved_key(key):
-        return (category == "INFO" and key in RESERVED_INFO_KEYS) or (
-            category == "FORMAT" and key in RESERVED_FORMAT_KEYS
-        )
+        # 'id' is reserved since it conflicts with 'variant_id' variable in VCF Zarr
+        return (
+            category == "INFO" and key in RESERVED_INFO_KEYS or key.lower() == "id"
+        ) or (category == "FORMAT" and key in RESERVED_FORMAT_KEYS)
 
     return from_regex(field_key_regex, fullmatch=True).filter(
         lambda key: not is_reserved_key(key)
@@ -275,18 +274,20 @@ def vcf(
     -------
     A Hypothesis strategy to generate a VCF file, including header, as a string.
     """
+    # ensure INFO and FORMAT keys are unique ignoring case to avoid macOS filesystem
+    # case-sensitivity issue for VCF Zarr
     info_fields = draw(
         lists(
             vcf_fields("INFO", max_number=max_number),
             max_size=max_info_fields,
-            unique_by=lambda f: f.vcf_key,
+            unique_by=lambda f: f.vcf_key.lower(),
         )
     )
     format_fields = draw(
         lists(
             vcf_fields("FORMAT", max_number=max_number),
             max_size=max_format_fields,
-            unique_by=lambda f: f.vcf_key,
+            unique_by=lambda f: f.vcf_key.lower(),
         )
     )
     sample_ids = draw(
