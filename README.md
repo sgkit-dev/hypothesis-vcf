@@ -12,8 +12,10 @@ For that reason, the main use case is for testing software that parses VCF or co
 to another format, since Hypothesis will generate examples that exercise many edge cases of
 the VCF spec.
 
-In particular, the generated VCFs do *not* have well-known INFO or FORMAT fields, such as `GT`
-or `AD`. However, the ability to generate these fields may be added in the future.
+In general, the generated VCFs do *not* have well-known INFO or FORMAT fields, such as `DP`
+or `AD`. There is one exception to this: `GT` (genotype) fields are generated, since they
+are found in most VCF files. The ability to generate more well-known fields may be added
+in the future.
 
 ## API
 
